@@ -12,14 +12,13 @@ CONFIG = File.join(File.dirname(__FILE__), "config.rb")
 $num_instances = 1
 $instance_name_prefix = "core"
 $update_channel = "alpha"
-$image_version = "current"
 $enable_serial_logging = false
 $share_home = false
 $vm_gui = false
-$vm_memory = 1024
+$vm_memory = 512
 $vm_cpus = 1
 $shared_folders = {}
-$forwarded_ports = {}
+$forwarded_ports = {8000 => 8000}
 
 # Attempt to apply the deprecated environment variable NUM_INSTANCES to
 # $num_instances while allowing config.rb to override it
@@ -49,14 +48,12 @@ Vagrant.configure("2") do |config|
   config.ssh.insert_key = false
 
   config.vm.box = "coreos-%s" % $update_channel
-  if $image_version != "current"
-      config.vm.box_version = $image_version
-  end
-  config.vm.box_url = "http://%s.release.core-os.net/amd64-usr/%s/coreos_production_vagrant.json" % [$update_channel, $image_version]
+  config.vm.box_version = ">= 308.0.1"
+  config.vm.box_url = "http://%s.release.core-os.net/amd64-usr/current/coreos_production_vagrant.json" % $update_channel
 
   ["vmware_fusion", "vmware_workstation"].each do |vmware|
     config.vm.provider vmware do |v, override|
-      override.vm.box_url = "http://%s.release.core-os.net/amd64-usr/%s/coreos_production_vagrant_vmware_fusion.json" % [$update_channel, $image_version]
+      override.vm.box_url = "http://%s.release.core-os.net/amd64-usr/current/coreos_production_vagrant_vmware_fusion.json" % $update_channel
     end
   end
 
@@ -103,7 +100,7 @@ Vagrant.configure("2") do |config|
       end
 
       $forwarded_ports.each do |guest, host|
-        config.vm.network "forwarded_port", guest: guest, host: host, auto_correct: true
+	config.vm.network "forwarded_port", guest: guest, host: host, auto_correct: true
       end
 
       ["vmware_fusion", "vmware_workstation"].each do |vmware|
@@ -120,11 +117,11 @@ Vagrant.configure("2") do |config|
         vb.cpus = vm_cpus
       end
 
-      ip = "172.17.8.#{i+100}"
+      ip = "192.168.0.#{i+100}"
       config.vm.network :private_network, ip: ip
 
       # Uncomment below to enable NFS for sharing the host machine into the coreos-vagrant VM.
-      #config.vm.synced_folder ".", "/home/core/share", id: "core", :nfs => true, :mount_options => ['nolock,vers=3,udp']
+      config.vm.synced_folder "../..", "/home/core/share", id: "core", :nfs => true, :mount_options => ['nolock,vers=3,udp']
       $shared_folders.each_with_index do |(host_folder, guest_folder), index|
         config.vm.synced_folder host_folder.to_s, guest_folder.to_s, id: "core-share%02d" % index, nfs: true, mount_options: ['nolock,vers=3,udp']
       end
@@ -132,6 +129,9 @@ Vagrant.configure("2") do |config|
       if $share_home
         config.vm.synced_folder ENV['HOME'], ENV['HOME'], id: "home", :nfs => true, :mount_options => ['nolock,vers=3,udp']
       end
+
+      # Provisioning
+      config.vm.provision "shell", path: "provisioning.sh"
 
       if File.exist?(CLOUD_CONFIG_PATH)
         config.vm.provision :file, :source => "#{CLOUD_CONFIG_PATH}", :destination => "/tmp/vagrantfile-user-data"
